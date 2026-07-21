@@ -1,16 +1,48 @@
 import sys
 import os
 import subprocess
+import threading
 from PyQt5.QtWidgets import (QApplication, QMainWindow, QWidget, QVBoxLayout,
                            QHBoxLayout, QPushButton, QTextEdit, QLineEdit,
                            QLabel, QDialog, QMessageBox, QFrame,
                            QGraphicsDropShadowEffect, QProgressBar)
-from PyQt5.QtCore import Qt, QSize, QTimer, QPropertyAnimation, QEasingCurve, pyqtSignal, QThread, QPoint
+from PyQt5.QtCore import Qt, QSize, QTimer, QPropertyAnimation, QEasingCurve, pyqtSignal, QThread, QPoint, QObject
 from PyQt5.QtGui import QColor, QIcon, QPixmap, QFont, QPalette, QLinearGradient, QGradient, QPainter, QBrush, QTextCursor, QFontDatabase
 import qdarkstyle
 import uuid # For generating unique thread IDs
 from vector import graph,run_agent_interaction
 from tools.web_search import search_on_web_tool
+from tools.open_terminal import set_confirmation_handler
+
+
+# Bridges a confirmation request raised on the background agent thread to a
+# QMessageBox shown on the main GUI thread, then blocks the agent thread
+# until the user answers.
+class ConfirmBridge(QObject):
+    confirmationRequested = pyqtSignal(object)
+
+    def __init__(self):
+        super().__init__()
+        self.confirmationRequested.connect(self._show_dialog)
+
+    def _show_dialog(self, request):
+        command, event, result = request
+        reply = QMessageBox.question(
+            None,
+            "Confirm Destructive Command",
+            f"Vector wants to run:\n\n{command}\n\nThis may delete or overwrite files. Allow it?",
+            QMessageBox.Yes | QMessageBox.No,
+            QMessageBox.No,
+        )
+        result.append(reply == QMessageBox.Yes)
+        event.set()
+
+    def ask(self, command: str) -> bool:
+        event = threading.Event()
+        result = []
+        self.confirmationRequested.emit((command, event, result))
+        event.wait()
+        return result[0] if result else False
 
 # --- Futuristic Styling ---
 # Attempt to load a modern font
@@ -175,6 +207,9 @@ class VectorWindow(QMainWindow):
         self.setGeometry(100, 100, 700, 800)
         self.thread_id = f"ui-session-{uuid.uuid4()}"
         print(f"Starting new conversation thread: {self.thread_id}")
+
+        self.confirm_bridge = ConfirmBridge()
+        set_confirmation_handler(self.confirm_bridge.ask)
 
         self.initUI()
 
