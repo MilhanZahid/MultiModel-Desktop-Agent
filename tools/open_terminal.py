@@ -1,6 +1,41 @@
+import re
 import subprocess
 from langchain_core.tools import tool
 import shlex # For safer command splitting if needed, though shell=True bypasses this here
+
+# Keyword/pattern heuristic for commands that can delete or overwrite data.
+# This is not exhaustive: an unrecognized or obfuscated command will slip through.
+_DESTRUCTIVE_PATTERNS = [
+    r"\bdel\b", r"\berase\b", r"\brmdir\b", r"\brd\b", r"\bformat\b",
+    r"\bdiskpart\b", r"\btaskkill\b", r"\bshutdown\b", r"\breg\s+delete\b",
+    r"\bsc\s+delete\b", r"\bcipher\b", r"\brm\b",
+    r">>?",  # output redirection can silently create/overwrite files
+]
+
+
+def is_destructive_command(command: str) -> bool:
+    """Heuristic check: does this command look like it deletes or overwrites data?"""
+    lowered = command.lower()
+    return any(re.search(pattern, lowered) for pattern in _DESTRUCTIVE_PATTERNS)
+
+
+# Callable(command: str) -> bool, registered by whichever front-end (GUI or CLI) is running.
+_confirmation_handler = None
+
+
+def set_confirmation_handler(handler):
+    """Register the function used to ask the user to confirm a destructive command."""
+    global _confirmation_handler
+    _confirmation_handler = handler
+
+
+def _default_confirmation_handler(command: str) -> bool:
+    answer = input(
+        f"Vector wants to run a potentially destructive command:\n  {command}\nAllow? [y/N]: "
+    )
+    return answer.strip().lower() == "y"
+
+
 @tool
 def run_windows_command(command: str):
     """Executes a given command in the Windows terminal (cmd.exe).
@@ -19,6 +54,11 @@ def run_windows_command(command: str):
     """
     if not command:
         return "Error: No command provided."
+
+    if is_destructive_command(command):
+        handler = _confirmation_handler or _default_confirmation_handler
+        if not handler(command):
+            return f"Command not executed: user declined confirmation for '{command}'."
 
     print(f"Executing Windows command: {command}")
     try:
