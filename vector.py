@@ -10,7 +10,7 @@ from langchain_core.messages import HumanMessage, ToolMessage, AIMessage
 from openai import APIError, APITimeoutError, RateLimitError, AuthenticationError, APIConnectionError
 from tools.web_search import search_on_web_tool
 from tools.open_terminal import run_windows_command
-from tools.ui_automation import click_coordinates, press_key
+from tools.ui_automation import click_coordinates, press_key, type_text
 from tools.screen_reader import describe_screen_content
 # Load the environment variables
 load_dotenv()
@@ -39,7 +39,7 @@ def get_weather(city: Literal["nyc", "sf"]):
 prompt = "You are Vector, the AI assistant created by Milhan. You are a helpful assistant that can answer questions and help with tasks."
 
 # Define the graph
-tools = [get_weather, search_on_web_tool, run_windows_command, click_coordinates, describe_screen_content, press_key, describe_screen_content]
+tools = [get_weather, search_on_web_tool, run_windows_command, click_coordinates, describe_screen_content, press_key, type_text]
 
 graph = create_react_agent(model, tools=tools, checkpointer=memory, prompt=prompt)
 
