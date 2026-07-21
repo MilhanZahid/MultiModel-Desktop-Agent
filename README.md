@@ -10,8 +10,7 @@ Vector is an AI assistant built using LangGraph and PyQt5 that can perform a var
 - **Terminal Command Execution**: Execute Windows terminal commands for file and system operations
 - **Web Search**: Search the web for up-to-date information
 - **Conversation Memory**: Vector remembers context from previous interactions
-- **Futuristic UI**: Modern, dark-themed interface with streaming responses
-- **Direct Terminal Access**: Built-in terminal emulator for direct command execution
+- **Futuristic UI**: Modern, dark-themed interface
 
 ## Requirements
 
@@ -45,17 +44,12 @@ python vector_ui.py
 The GUI provides:
 
 - Chat interface for interacting with Vector
-- Terminal emulator for direct command execution
 - Popup confirmations for sensitive operations
-- Status indicators and real-time response streaming
+- Status indicator showing when Vector is processing a request
 
 ### Command Line Version
 
-If you prefer a command-line interface:
-
-```
-python vector.py
-```
+Not currently available. `vector.py`'s `__main__` block is commented out, so running `python vector.py` directly just imports the module and exits without starting an interactive session. The GUI (`python vector_ui.py`) is the only working entry point right now.
 
 ### Example Commands
 
@@ -87,26 +81,21 @@ You can ask Vector to:
 
 ### Security Features
 
-For any operations that modify your system (like deleting files or writing to files), Vector will ask for your confirmation before proceeding. In the GUI version, this appears as a popup dialog:
+Before running a terminal command, Vector checks it against a keyword heuristic for destructive operations (`del`, `erase`, `rmdir`, `format`, `taskkill`, `shutdown`, output redirection, etc. — see `is_destructive_command` in `tools/open_terminal.py`). If the command matches, Vector asks for confirmation before proceeding: a popup dialog (Yes/No) in the GUI. A `y/N` console prompt also exists in the code as a fallback (`_default_confirmation_handler` in `tools/open_terminal.py`) for when no GUI handler is registered, but since the CLI entry point is currently disabled, the GUI popup is the only path exercised in practice.
 
-![Confirmation Dialog](docs/confirmation_dialog.png)
+This is a keyword heuristic, not a sandbox. A command that deletes or overwrites data without matching one of the known patterns will run without a prompt. Treat this as a guard against obviously destructive commands, not a full safety boundary — commands that aren't flagged still execute immediately and unconfirmed.
 
 ## UI Overview
 
-The Vector UI is divided into two main sections:
+The Vector UI is a single chat panel:
 
-1. **Chat Panel (Left)**: Interact with Vector using natural language
-
-   - Type your questions or commands in the input box
-   - View Vector's responses in the chat area
-   - Watch as responses stream in real-time
-
-2. **Terminal Panel (Right)**: Direct command execution
-   - Execute terminal commands directly
-   - View command output
-   - Type 'help' for a list of common commands
+- Type your questions or commands in the input box
+- View the conversation history in the chat area
+- Vector's reply is rendered as one message once the agent finishes processing (it is not streamed in token-by-token); the input box is disabled and its placeholder reads "VECTOR is processing..." while a request is in flight
 
 ![Vector UI](icons/screenshot.png)
+
+> Note: this screenshot is out of date — it shows an old window title ("J.A.R.V.I.S Interface") from before the app was renamed to Vector. The single-panel layout it depicts is still accurate.
 
 ## Extending Vector
 
@@ -133,7 +122,7 @@ Voice support is planned for a future release. The codebase is designed to make 
 
 ## License
 
-This project is licensed under the MIT License - see the LICENSE file for details.
+No LICENSE file is currently included in this repository.
 
 ## Acknowledgments
 
