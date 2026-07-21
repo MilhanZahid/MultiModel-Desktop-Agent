@@ -7,6 +7,7 @@ from langgraph.checkpoint.memory import MemorySaver
 from langchain_openai import ChatOpenAI
 from langchain_core.tools import tool
 from langchain_core.messages import HumanMessage, ToolMessage, AIMessage
+from openai import APIError, APITimeoutError, RateLimitError, AuthenticationError, APIConnectionError
 from tools.web_search import search_on_web_tool
 from tools.open_terminal import run_windows_command
 from tools.ui_automation import click_coordinates, press_key
@@ -42,6 +43,26 @@ tools = [get_weather, search_on_web_tool, run_windows_command, click_coordinates
 
 graph = create_react_agent(model, tools=tools, checkpointer=memory, prompt=prompt)
 
+
+class VectorModelError(Exception):
+    """Raised when the language model call fails, with a clean user-facing message."""
+
+
+def _format_model_error(e: Exception) -> str:
+    """Turn a raw exception from a model call into a clean, specific message for the UI."""
+    if isinstance(e, AuthenticationError):
+        return f"Error: Authentication with the language model failed. Check that your OpenAI API key is set correctly. ({e})"
+    if isinstance(e, RateLimitError):
+        return f"Error: The language model rate limit was exceeded. Please wait a moment and try again. ({e})"
+    if isinstance(e, APITimeoutError):
+        return f"Error: The language model request timed out. Please check your network connection and try again. ({e})"
+    if isinstance(e, APIConnectionError):
+        return f"Error: Could not connect to the language model service. Please check your network connection. ({e})"
+    if isinstance(e, APIError):
+        return f"Error: The language model service returned an error. ({e})"
+    return f"Error: Vector's language model could not be reached ({e}). Please check your connection or API key and try again."
+
+
 def run_agent_interaction(user_input: str, thread_id: str, graph):
     """
     Runs a single interaction with the LangGraph agent.
@@ -63,13 +84,17 @@ def run_agent_interaction(user_input: str, thread_id: str, graph):
     # Stream until the interrupt
     stream_output = []
     print("Streaming initial agent response...")
-    for chunk in graph.stream(inputs, config=config, stream_mode="values"):
-         stream_output.append(chunk)
-         # Optional: print intermediate steps here if desired
-         message = chunk["messages"][-1]
-         if not isinstance(message, tuple):
-             print("Intermediate step:", type(message).__name__)
-             # message.pretty_print() # Uncomment for full message details
+    try:
+        for chunk in graph.stream(inputs, config=config, stream_mode="values"):
+             stream_output.append(chunk)
+             # Optional: print intermediate steps here if desired
+             message = chunk["messages"][-1]
+             if not isinstance(message, tuple):
+                 print("Intermediate step:", type(message).__name__)
+                 # message.pretty_print() # Uncomment for full message details
+    except Exception as e:
+        print(f"Error during initial model call: {e}")
+        raise VectorModelError(_format_model_error(e)) from e
 
 
     # Get state after the initial run/interrupt
@@ -107,7 +132,11 @@ def run_agent_interaction(user_input: str, thread_id: str, graph):
 
             # Invoke the graph with None input to continue from the updated state
             print("\nInvoking graph to continue execution after tool call...")
-            final_state = graph.invoke(None, config=config)
+            try:
+                final_state = graph.invoke(None, config=config)
+            except Exception as e:
+                print(f"Error during follow-up model call: {e}")
+                raise VectorModelError(_format_model_error(e)) from e
 
             # Extract the final AI message from the final state
             final_ai_message = final_state["messages"][-1]
